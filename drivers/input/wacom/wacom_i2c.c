@@ -32,6 +32,10 @@
 #include "wacom_i2c_coord_tables.h"
 #endif
 
+#ifdef CONFIG_FB
+#include <linux/fb.h>
+#endif
+
 #define WACOM_FW_PATH "/sdcard/firmware/wacom_firm.bin"
 
 static struct wacom_features wacom_feature_EMR = {
@@ -1302,6 +1306,11 @@ static void wacom_init_fw_algo(struct wacom_i2c *wac_i2c)
 }
 #endif
 
+#ifdef CONFIG_FB
+static int fb_notifier_callback(struct notifier_block *self,
+	unsigned long event, void *data);
+#endif
+
 static int wacom_i2c_probe(struct i2c_client *client,
 			   const struct i2c_device_id *id)
 {
@@ -1488,6 +1497,12 @@ static int wacom_i2c_probe(struct i2c_client *client,
 	schedule_work(&wac_i2c->update_work);
 	/*complete_all(&wac_i2c->init_done);*/
 
+#ifdef CONFIG_FB
+	wac_i2c->fb_notif.notifier_call = fb_notifier_callback;
+	if (fb_register_client(&wac_i2c->fb_notif))
+		pr_err("%s: could not create fb notifier\n", __func__);
+#endif
+
 	return 0;
 
  err_request_irq:
@@ -1507,6 +1522,9 @@ static int wacom_i2c_probe(struct i2c_client *client,
 	mutex_destroy(&wac_i2c->update_lock);
 	mutex_destroy(&wac_i2c->lock);
 	input_free_device(input);
+#ifdef CONFIG_FB
+	fb_unregister_client(&wac_i2c->fb_notif);
+#endif
  err_alloc_input_dev:
 	kfree(wac_i2c);
 	wac_i2c = NULL;
@@ -1523,6 +1541,34 @@ void wacom_i2c_shutdown(struct i2c_client *client)
 
 	printk(KERN_DEBUG"epen:%s\n", __func__);
 }
+
+#ifdef CONFIG_FB
+static int fb_notifier_callback(struct notifier_block *self,
+				unsigned long event, void *data)
+{
+	struct fb_event *evdata = data;
+	struct wacom_i2c *wac_i2c = container_of(self, struct wacom_i2c, fb_notif);
+
+	if (evdata && evdata->data && event == FB_EVENT_BLANK) {
+		int *blank = evdata->data;
+		switch (*blank) {
+		case FB_BLANK_UNBLANK:
+		case FB_BLANK_NORMAL:
+		case FB_BLANK_VSYNC_SUSPEND:
+		case FB_BLANK_HSYNC_SUSPEND:
+			wacom_i2c_enable(wac_i2c);
+			break;
+		case FB_BLANK_POWERDOWN:
+			wacom_i2c_disable(wac_i2c);
+			break;
+		default:
+			/* Don't handle what we don't understand */
+			break;
+		}
+	}
+	return 0;
+}
+#endif
 
 static const struct i2c_device_id wacom_i2c_id[] = {
 	{"wacom_g5sp_i2c", 0},
