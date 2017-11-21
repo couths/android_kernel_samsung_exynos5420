@@ -346,6 +346,9 @@ struct fw_update_info {
 	u8 *fw_data;
 };
 
+#define LONG_PRESS_TIME 500
+#define MIN_GEST_DIST 384
+
 /*Parameters for i2c driver*/
 struct wacom_i2c {
 	struct i2c_client *client;
@@ -426,6 +429,12 @@ struct wacom_i2c {
 #endif
 	struct work_struct update_work;
 	struct fw_update_info update_info;
+
+	int enabled_gestures;
+	int gesture_key;
+	int gesture_start_x;
+	int gesture_start_y;
+	ktime_t gesture_start_time;
 };
 
 #endif /* _LINUX_WACOM_H */
