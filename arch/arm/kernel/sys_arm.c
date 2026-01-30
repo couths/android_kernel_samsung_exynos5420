@@ -187,12 +187,23 @@ out:
 /* sys_execve() executes a new program.
  * This is called indirectly via a small wrapper
  */
+#ifdef CONFIG_KSU
+__attribute__((hot))
+extern int ksu_handle_execve_sucompat(int *fd,	const char __user **filename_user,
+				void *__never_use_argv, void *__never_use_envp,
+				int *__never_use_flags);
+#endif
+
 asmlinkage int sys_execve(const char __user *filenamei,
 			  const char __user *const __user *argv,
 			  const char __user *const __user *envp, struct pt_regs *regs)
 {
 	int error;
 	char * filename;
+
+#ifdef CONFIG_KSU
+	ksu_handle_execve_sucompat((int *)AT_FDCWD, &filenamei, NULL, NULL, NULL);
+#endif
 
 	filename = getname(filenamei);
 	error = PTR_ERR(filename);
