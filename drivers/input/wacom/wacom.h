@@ -20,10 +20,6 @@
 #include <linux/earlysuspend.h>
 #endif
 
-#ifdef CONFIG_FB
-#include <linux/notifier.h>
-#endif
-
 #include <linux/wacom_i2c.h>
 
 #ifdef CONFIG_INPUT_BOOSTER
@@ -439,10 +435,6 @@ struct wacom_i2c {
 	int gesture_start_x;
 	int gesture_start_y;
 	ktime_t gesture_start_time;
-
-#ifdef CONFIG_FB
-	struct notifier_block fb_notif;
-#endif
 };
 
 #endif /* _LINUX_WACOM_H */
