@@ -97,7 +97,7 @@ else
 fi
 
 # Submodules
-if git submodule status --recursive | grep -E '^-|\+' > /dev/null; then
+if git submodule status --recursive | grep -E '^-' > /dev/null; then
     echo -e "${RED}Submodules are not synced, syncing them...${NC}"
     git submodule update --init --recursive
 fi
