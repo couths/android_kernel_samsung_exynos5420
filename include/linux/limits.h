@@ -1,6 +1,10 @@
 #ifndef _LINUX_LIMITS_H
 #define _LINUX_LIMITS_H
 
+#ifndef U16_MAX
+#define U16_MAX ((u16)~0U)
+#endif
+
 #define NR_OPEN	        1024
 
 #define NGROUPS_MAX    65536	/* supplemental group IDs are available */
