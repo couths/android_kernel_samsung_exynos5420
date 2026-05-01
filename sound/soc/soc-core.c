@@ -567,19 +567,16 @@ int snd_soc_suspend(struct device *dev)
 	}
 
 	for (i = 0; i < card->num_rtd; i++) {
-		struct snd_soc_dai *codec_dai = card->rtd[i].codec_dai;
 
 		if (card->rtd[i].dai_link->ignore_suspend)
 			continue;
 
 		snd_soc_dapm_stream_event(&card->rtd[i],
 					  SNDRV_PCM_STREAM_PLAYBACK,
-					  codec_dai,
 					  SND_SOC_DAPM_STREAM_SUSPEND);
 
 		snd_soc_dapm_stream_event(&card->rtd[i],
 					  SNDRV_PCM_STREAM_CAPTURE,
-					  codec_dai,
 					  SND_SOC_DAPM_STREAM_SUSPEND);
 	}
 
@@ -683,17 +680,16 @@ static void soc_resume_deferred(struct work_struct *work)
 	}
 
 	for (i = 0; i < card->num_rtd; i++) {
-		struct snd_soc_dai *codec_dai = card->rtd[i].codec_dai;
 
 		if (card->rtd[i].dai_link->ignore_suspend)
 			continue;
 
 		snd_soc_dapm_stream_event(&card->rtd[i],
-					  SNDRV_PCM_STREAM_PLAYBACK, codec_dai,
+					  SNDRV_PCM_STREAM_PLAYBACK,
 					  SND_SOC_DAPM_STREAM_RESUME);
 
 		snd_soc_dapm_stream_event(&card->rtd[i],
-					  SNDRV_PCM_STREAM_CAPTURE, codec_dai,
+					  SNDRV_PCM_STREAM_CAPTURE,
 					  SND_SOC_DAPM_STREAM_RESUME);
 	}
 
@@ -884,6 +880,28 @@ out:
 	return 1;
 }
 
+static int soc_remove_platform(struct snd_soc_platform *platform)
+{
+	int ret;
+
+	if (platform->driver->remove) {
+		ret = platform->driver->remove(platform);
+		if (ret < 0)
+			pr_err("asoc: failed to remove %s: %d\n",
+				platform->name, ret);
+	}
+
+	/* Make sure all DAPM widgets are freed */
+	snd_soc_dapm_free(&platform->dapm);
+
+	soc_cleanup_platform_debugfs(platform);
+	platform->probed = 0;
+	list_del(&platform->card_list);
+	module_put(platform->dev->driver->owner);
+
+	return 0;
+}
+
 static void soc_remove_codec(struct snd_soc_codec *codec)
 {
 	int err;
@@ -936,22 +954,8 @@ static void soc_remove_dai_link(struct snd_soc_card *card, int num, int order)
 
 	/* remove the platform */
 	if (platform && platform->probed &&
-			platform->driver->remove_order == order) {
-		if (platform->driver->remove) {
-			err = platform->driver->remove(platform);
-			if (err < 0)
-				pr_err("asoc: failed to remove %s: %d\n",
-							platform->name, err);
-		}
-
-		/* Make sure all DAPM widgets are freed */
-		snd_soc_dapm_free(&platform->dapm);
-
-		soc_cleanup_platform_debugfs(platform);
-		platform->probed = 0;
-		list_del(&platform->card_list);
-		module_put(platform->dev->driver->owner);
-	}
+			platform->driver->remove_order == order)
+		soc_remove_platform(platform);
 
 	/* remove the CODEC */
 	if (codec && codec->probed &&
@@ -1200,7 +1204,9 @@ static int soc_probe_dai_link(struct snd_soc_card *card, int num, int order)
 	struct snd_soc_pcm_runtime *rtd = &card->rtd[num];
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_platform *platform = rtd->platform;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai, *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_dapm_widget *play_w, *capture_w;
 	int ret;
 
 	dev_dbg(card->dev, "probe %s dai link %d late %d\n",
@@ -1279,12 +1285,50 @@ static int soc_probe_dai_link(struct snd_soc_card *card, int num, int order)
 	if (ret < 0)
 		pr_warn("asoc: failed to add pmdown_time sysfs:%d\n", ret);
 
-	/* create the pcm */
-	ret = soc_new_pcm(rtd, num);
-	if (ret < 0) {
-		pr_err("asoc: can't create pcm %s :%d\n",
-				dai_link->stream_name, ret);
-		return ret;
+	if (cpu_dai->driver->compress_dai) {
+		/*create compress_device"*/
+		ret = soc_new_compress(rtd, num);
+		if (ret < 0) {
+			pr_err("asoc: can't create compress %s\n",
+					 dai_link->stream_name);
+			return ret;
+		}
+	} else {
+
+		if (!dai_link->params) {
+			/* create the pcm */
+			ret = soc_new_pcm(rtd, num);
+			if (ret < 0) {
+				pr_err("asoc: can't create pcm %s :%d\n",
+				       dai_link->stream_name, ret);
+				return ret;
+			}
+		} else {
+			/* link the DAI widgets */
+			play_w = codec_dai->playback_widget;
+			capture_w = cpu_dai->capture_widget;
+			if (play_w && capture_w) {
+				ret = snd_soc_dapm_new_pcm(card, dai_link->params,
+						   capture_w, play_w);
+				if (ret != 0) {
+					dev_err(card->dev, "Can't link %s to %s: %d\n",
+						play_w->name, capture_w->name, ret);
+					return ret;
+				}
+			}
+
+			play_w = cpu_dai->playback_widget;
+			capture_w = codec_dai->capture_widget;
+			if (play_w && capture_w) {
+				ret = snd_soc_dapm_new_pcm(card, dai_link->params,
+						   capture_w, play_w);
+				if (ret != 0) {
+					dev_err(card->dev, "Can't link %s to %s: %d\n",
+						play_w->name, capture_w->name, ret);
+					return ret;
+				}
+			}
+		}
 	}
 
 	/* add platform data for AC97 devices */
@@ -1632,7 +1676,6 @@ static void snd_soc_instantiate_cards(void)
 static int soc_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
-	int ret = 0;
 
 	/*
 	 * no card, so machine driver should be registering card
@@ -1648,13 +1691,7 @@ static int soc_probe(struct platform_device *pdev)
 	/* Bodge while we unpick instantiation */
 	card->dev = &pdev->dev;
 
-	ret = snd_soc_register_card(card);
-	if (ret != 0) {
-		dev_err(&pdev->dev, "Failed to register card\n");
-		return ret;
-	}
-
-	return 0;
+	return snd_soc_register_card(card);
 }
 
 static int soc_cleanup_card_resources(struct snd_soc_card *card)
@@ -1889,9 +1926,13 @@ unsigned int snd_soc_read(struct snd_soc_codec *codec, unsigned int reg)
 {
 	unsigned int ret;
 
-	ret = codec->read(codec, reg);
-	dev_dbg(codec->dev, "read %x => %x\n", reg, ret);
-	trace_snd_soc_reg_read(codec, reg, ret);
+        if (codec->read) {
+		ret = codec->read(codec, reg);
+		dev_dbg(codec->dev, "read %x => %x\n", reg, ret);
+		trace_snd_soc_reg_read(codec, reg, ret);
+        }
+        else
+		ret = -EIO;
 
 	return ret;
 }
@@ -1900,9 +1941,13 @@ EXPORT_SYMBOL_GPL(snd_soc_read);
 unsigned int snd_soc_write(struct snd_soc_codec *codec,
 			   unsigned int reg, unsigned int val)
 {
-	dev_dbg(codec->dev, "write %x = %x\n", reg, val);
-	trace_snd_soc_reg_write(codec, reg, val);
-	return codec->write(codec, reg, val);
+	if (codec->write) {
+		dev_dbg(codec->dev, "write %x = %x\n", reg, val);
+		trace_snd_soc_reg_write(codec, reg, val);
+		return codec->write(codec, reg, val);
+        }
+	else
+		return -EIO;
 }
 EXPORT_SYMBOL_GPL(snd_soc_write);
 
@@ -3231,12 +3276,20 @@ EXPORT_SYMBOL_GPL(snd_soc_dai_set_tristate);
  * snd_soc_dai_digital_mute - configure DAI system or master clock.
  * @dai: DAI
  * @mute: mute enable
+ * @direction: stream to mute
  *
  * Mutes the DAI DAC.
  */
-int snd_soc_dai_digital_mute(struct snd_soc_dai *dai, int mute)
+int snd_soc_dai_digital_mute(struct snd_soc_dai *dai, int mute,
+			     int direction)
 {
-	if (dai->driver && dai->driver->ops->digital_mute)
+	if (!dai->driver)
+		return -ENOTSUPP;
+
+	if (dai->driver->ops->mute_stream)
+		return dai->driver->ops->mute_stream(dai, mute, direction);
+	else if (direction == SNDRV_PCM_STREAM_PLAYBACK &&
+		 dai->driver->ops->digital_mute)
 		return dai->driver->ops->digital_mute(dai, mute);
 	else
 		return -EINVAL;
@@ -3846,6 +3899,7 @@ int snd_soc_of_parse_audio_routing(struct snd_soc_card *card,
 			dev_err(card->dev,
 				"Property '%s' index %d could not be read: %d\n",
 				propname, 2 * i, ret);
+			kfree(routes);
 			return -EINVAL;
 		}
 		ret = of_property_read_string_index(np, propname,
@@ -3854,6 +3908,7 @@ int snd_soc_of_parse_audio_routing(struct snd_soc_card *card,
 			dev_err(card->dev,
 				"Property '%s' index %d could not be read: %d\n",
 				propname, (2 * i) + 1, ret);
+			kfree(routes);
 			return -EINVAL;
 		}
 	}

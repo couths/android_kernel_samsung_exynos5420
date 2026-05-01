@@ -698,7 +698,7 @@ static int usb_audio_suspend(struct usb_interface *intf, pm_message_t message)
 				as = list_entry(p, struct snd_usb_stream, list);
 				snd_pcm_suspend_all(as->pcm);
 			}
- 		}
+		}
 	} else {
 		/*
 		 * otherwise we keep the rest of the system in the dark
@@ -756,8 +756,7 @@ static struct usb_device_id usb_audio_ids [] = {
       .bInterfaceSubClass = USB_SUBCLASS_AUDIOCONTROL },
     { }						/* Terminating entry */
 };
-
-MODULE_DEVICE_TABLE (usb, usb_audio_ids);
+MODULE_DEVICE_TABLE(usb, usb_audio_ids);
 
 /*
  * entry point for linux usb interface

@@ -125,18 +125,28 @@
 
 #define EXYNOS_GPU_NUMBER	4
 
-#define HOT_NORMAL_TEMP		95
-#define HOT_CRITICAL_TEMP	110
-#define HOT_95			95
-#define HOT_109			104
-#define HOT_110			105
-#define MEM_TH_TEMP1		75
-#define MEM_TH_TEMP2		85
-#define GPU_TH_TEMP1		90
-#define GPU_TH_TEMP2		95
-#define GPU_TH_TEMP3		100
-#define GPU_TH_TEMP4		105
-#define GPU_TH_TEMP5		110
+static unsigned int HOT_NORMAL_TEMP = 95;
+static unsigned int HOT_CRITICAL_TEMP = 110;
+static unsigned int HOT_95 = 95;
+static unsigned int HOT_109 = 109;
+static unsigned int HOT_110 = 110;
+static unsigned int MEM_TH_TEMP1 = 75;
+static unsigned int MEM_TH_TEMP2 = 85;
+static unsigned int GPU_TH_TEMP1 = 90;
+static unsigned int GPU_TH_TEMP2 = 95;
+static unsigned int GPU_TH_TEMP3 = 100;
+static unsigned int GPU_TH_TEMP4 = 105;
+static unsigned int GPU_TH_TEMP5 = 110;
+
+module_param_named(tmu_cpu_normal, HOT_NORMAL_TEMP, uint, S_IWUSR | S_IRUGO);
+module_param_named(tmu_cpu_critical, HOT_CRITICAL_TEMP, uint, S_IWUSR | S_IRUGO);
+module_param_named(tmu_mif_normal, MEM_TH_TEMP1, uint, S_IWUSR | S_IRUGO);
+module_param_named(tmu_mif_hot, MEM_TH_TEMP2, uint, S_IWUSR | S_IRUGO);
+module_param_named(tmu_gpu_temp1, GPU_TH_TEMP1, uint, S_IWUSR | S_IRUGO);
+module_param_named(tmu_gpu_temp2, GPU_TH_TEMP2, uint, S_IWUSR | S_IRUGO);
+module_param_named(tmu_gpu_temp3, GPU_TH_TEMP3, uint, S_IWUSR | S_IRUGO);
+module_param_named(tmu_gpu_temp4, GPU_TH_TEMP4, uint, S_IWUSR | S_IRUGO);
+module_param_named(tmu_gpu_temp5, GPU_TH_TEMP5, uint, S_IWUSR | S_IRUGO);
 
 #define TYPE_CPU		1
 #define TYPE_GPU		2
@@ -153,7 +163,7 @@
 
 #define GAP_WITH_RISE		2
 #define MAX_FREQ		2300
-#define MIN_FREQ		400
+#define MIN_FREQ		250
 
 #ifdef CONFIG_THERMAL_DEBUG
 #define DTM_DBG(x...) printk(x)
@@ -323,7 +333,7 @@ static int exynos_get_trip_type(struct thermal_zone_device *thermal, int trip,
 static int exynos_get_trip_temp(struct thermal_zone_device *thermal, int trip,
 				unsigned long *temp)
 {
-	if (trip < GET_TRIP(MONITOR_ZONE) || trip > GET_TRIP(PANIC_ZONE))
+	if ( trip > th_zone->sensor_conf->trip_data.trip_count)
 		return -EINVAL;
 
 	*temp = th_zone->sensor_conf->trip_data.trip_val[trip];
@@ -434,7 +444,7 @@ static int exynos_get_trip_temp_level(struct thermal_zone_device *thermal, int t
 
 static int exynos_set_trip_temp_level(struct thermal_zone_device *thermal,
 				unsigned int temp0, unsigned int temp1,
-				unsigned int temp2)
+				unsigned int temp2, unsigned int temp3)
 {
 	if (!th_zone->sensor_conf) {
 		pr_info("Temperature sensor not initialised\n");
@@ -444,6 +454,7 @@ static int exynos_set_trip_temp_level(struct thermal_zone_device *thermal,
 	th_zone->sensor_conf->cooling_data.freq_data[0].temp_level = temp0;
 	th_zone->sensor_conf->cooling_data.freq_data[1].temp_level = temp1;
 	th_zone->sensor_conf->cooling_data.freq_data[2].temp_level = temp2;
+	th_zone->sensor_conf->cooling_data.freq_data[3].temp_level = temp3;
 
 	return 0;
 }

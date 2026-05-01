@@ -18,6 +18,7 @@
 
 struct snd_pcm_substream;
 struct snd_soc_dapm_widget;
+struct snd_compr_stream;
 
 /*
  * DAI hardware audio formats.
@@ -125,7 +126,8 @@ int snd_soc_dai_set_channel_map(struct snd_soc_dai *dai,
 int snd_soc_dai_set_tristate(struct snd_soc_dai *dai, int tristate);
 
 /* Digital Audio Interface mute */
-int snd_soc_dai_digital_mute(struct snd_soc_dai *dai, int mute);
+int snd_soc_dai_digital_mute(struct snd_soc_dai *dai, int mute,
+			     int direction);
 
 struct snd_soc_dai_ops {
 	/*
@@ -156,6 +158,7 @@ struct snd_soc_dai_ops {
 	 * Called by soc-core to minimise any pops.
 	 */
 	int (*digital_mute)(struct snd_soc_dai *dai, int mute);
+	int (*mute_stream)(struct snd_soc_dai *dai, int mute, int stream);
 
 	/*
 	 * ALSA PCM audio operations - all optional.
@@ -203,6 +206,8 @@ struct snd_soc_dai_driver {
 	int (*remove)(struct snd_soc_dai *dai);
 	int (*suspend)(struct snd_soc_dai *dai);
 	int (*resume)(struct snd_soc_dai *dai);
+	/* compress dai */
+	bool compress_dai;
 
 	/* ops */
 	const struct snd_soc_dai_ops *ops;
@@ -237,7 +242,6 @@ struct snd_soc_dai {
 	unsigned int symmetric_rates:1;
 	struct snd_pcm_runtime *runtime;
 	unsigned int active;
-	unsigned char pop_wait:1;
 	unsigned char probed:1;
 
 	struct snd_soc_dapm_widget *playback_widget;
