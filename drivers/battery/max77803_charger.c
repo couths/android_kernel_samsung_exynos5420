@@ -921,7 +921,7 @@ static int sec_chg_get_property(struct power_supply *psy,
 		val->intval = charger->charging_current;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		val->intval = max77803_get_charge_current(charger);
+		val->intval = 1000 * max77803_get_charge_current(charger);
 		break;
 #if defined(CONFIG_BATTERY_SWELLING)
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
